@@ -2,7 +2,7 @@
 
 #### What I'm Doing
 
-The goal of this project is to create simple, reproducable, and easy to understand examples of how to effectively use base R and packages to perform basic analysis of ecological data. These examples can then be adapted with the user's own data.
+The goal of this project is to create simple, reproducable, and easy to understand examples of how to effectively use R and packages to perform basic analysis of ecological data. These examples can then be adapted with the user's own data.
 
 R is a statistical analysis language and programming environment for Windows, Mac OS, and Linux that is available freely from the CRAN network at https://cran.r-project.org/
 
