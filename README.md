@@ -1,5 +1,5 @@
 ### Welcome to EcoEx:
-#### A catalog of ecological data analysis R code examples with sample data sets
+#### A catalog of ecological analysis R code examples with sample data sets
 
 ---
 
