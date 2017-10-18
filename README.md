@@ -1,11 +1,11 @@
-### Welcome to EcoEx :seedling:
+## Welcome to EcoEx :seedling:
 ```R
 if (ecologist && novice R user) {
   keep reading!
 }
 ```
 
-#### | What |
+### | What |
 
 The goal of this project is to assemble a catalog of simple, reproducable, and easy to understand examples of how to effectively use R and packages to perform basic analysis of ecological data.
 
@@ -17,18 +17,18 @@ The [StreamMetabolism](https://github.com/ssefick/StreamMetabolism) package can 
 
 ---
 
-#### | Who |
+### | Who |
 
 This project will be most useful for biologists who are R novices and need a few stepping stones to transition to using R for all analysis purposes. This idea began as a personal self-teaching project, so I'm also learning as we go along.
 
 ---
 
-#### | Where |
+### | Where |
 
 Ideally, the example data in this repo will come from real studies and may be "messy", so as to represent actual data that you would run for an analysis. It will be sourced from open repositories (such as USGS stream gauge data, available publicly at https://waterwatch.usgs.gov/) whenever possible. 
 
 ---
 
-#### | Want to contribute? |
+### | Want to contribute? |
 
 Feel free to fork this repo and add your own modifications, or drop me a line over Twitter @michelleckelly2
