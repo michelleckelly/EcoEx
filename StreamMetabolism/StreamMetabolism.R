@@ -2,17 +2,16 @@
 #                                 automatic data pulls from USGS & NEON
 # Script written by:              Michelle Catherine Kelly
 #                                 github: michelleckelly
-# Last modified date:             20 November 2017
 
 # Set up environment
 rm(list=ls())
-library(dataRetrieval) #USGS pull packages
-library(httr) #NEON pull packages
+library(ggplot2)
+library(dataRetrieval) #USGS API package
+library(httr) #NEON API associated packages
 library(jsonlite)
 library(dplyr)
-library(streamMetabolizer) #required for streamMetabolizer
+library(streamMetabolizer) #streamMetabolizer and associated packages
 library(tidyr)
-library(ggplot2) #data vis
 
 # FOR REFERENCE: list of USGS parameter code numerics is available at
 # https://help.waterdata.usgs.gov/code/parameter_cd_query?fmt=rdb&inline=true&group_cd=%
@@ -20,90 +19,122 @@ library(ggplot2) #data vis
 # list of NEON product code numerics is available at
 # http://data.neonscience.org/data-product-catalog 
 
-# Data to be pulled from USGS
+# Set up data pull from USGS API
 siteNo <- "06892350" # Kansas R at Desoto, KS
 startDate <- "2016-08-08" # YYYY-MM-DD
 endDate <- "2016-08-15"
-pCode <- c("00010","00060","00065","00300","00301","00400","32318","63680","99133") 
-# Parameter codes: water temp, discharge, gage height, DO, DO % sat, pH, chlorophyll, NO3+NO2
+pCode <- c("00010","00060","00065","00300","00301") # Parameter codes: water temp, discharge, gage height, DO, DO % saturation
 
 # justification for using gage height to approximate stream depth https://water.usgs.gov/edu/measureflow.html
 
 # Pull from USGS
-kansas <- readNWISuv(siteNumbers = siteNo, parameterCd = pCode,
-                     startDate = startDate, endDate = endDate,
-                     tz = "America/Chicago")
-# Rename columns to paramater names
-kansas <- renameNWISColumns(kansas)
+kansas <- readNWISuv(siteNumbers = siteNo, parameterCd = pCode, startDate = startDate, endDate = endDate, tz = "America/Chicago")
 
-# Fix remaining names that are still parameter codes
-names(kansas)[names(kansas)=="00301_Inst"] <- "DO_percentsat"
+# Pull cleanup
+kansas <- renameNWISColumns(kansas) # Rename columns from codes to parameter names
+names(kansas)[names(kansas)=="00301_Inst"] <- "DO_percentsat" # Fix remaining names that are still parameter codes
 names(kansas)[names(kansas)=="00301_Inst_cd"] <- "DO_percentsat_cd"
-names(kansas)[names(kansas)=="32318_Inst"] <- "chlorophyll"
-names(kansas)[names(kansas)=="32318_Inst_cd"] <- "chlorophyll_cd"
-names(kansas)[names(kansas)=="99133_Inst"] <- "nitrate"
-names(kansas)[names(kansas)=="99133_Inst_cd"] <- "nitrate_cd"
 
-# Dataframe of parameter names, codes, description, & units
-parameterInfo <- attr(kansas, "variableInfo")
-parameterInfo$variableDescription #gives variable and units
-siteInfo <- attr(kansas, "siteInfo")
+# Assemble meta-dataframes of parameter names, codes, description, & units
+parameterInfo <- attr(kansas, "variableInfo") # Parameter information dataframe
+parameterInfo$variableDescription # Outputs parameter descriptions and units
+siteInfo <- attr(kansas, "siteInfo") # Monitoring station information dataframe
+siteInfo$station_nm # Outputs name and general location of station
 
-# Timeseries plot of nitrate
-nitrateplot <- ggplot(data = kansas, aes(dateTime, nitrate))+geom_line()
-nitrateplot <- nitrateplot + xlab("") + ylab(parameterInfo$variableDescription[8]) +
+# Convert from American to SI units
+ft3s_m3s <- function(ft3s){
+  m3s <- ft3s*0.0283168
+  return(m3s)
+}
+ft_m <- function(ft){
+  m <- 0.3048*ft
+  return(m)
+}
+kansas$Flow_Inst <- ft3s_m3s(kansas$Flow_Inst)
+kansas$GH_Inst <- ft_m(kansas$GH_Inst)
+
+parameterInfo$variableName[grep(pattern = "ft3/s", x = parameterInfo$unit)] <- "Streamflow, m3/s" # Rename descriptions
+parameterInfo$variableDescription[grep(pattern = "ft3/s", x = parameterInfo$unit)] <- "Discharge, cubic meters per second"
+parameterInfo$unit[grep(pattern = "ft3/s", x = parameterInfo$unit)] <- "m3/s"
+
+parameterInfo$variableName[grep(pattern = "ft$", x = parameterInfo$unit, perl = TRUE)] <- "Gage height, m"
+parameterInfo$variableDescription[grep(pattern = "ft$", x = parameterInfo$unit, perl = TRUE)] <- "Gage height, meters"
+parameterInfo$unit[grep(pattern = "ft$", x = parameterInfo$unit, perl = TRUE)] <- "m"
+
+# Data visualization example: time series plot of discharge
+dischargeplot <- ggplot(data = kansas, aes(dateTime, Flow_Inst))+geom_line()
+dischargeplot <- dischargeplot + xlab("") + 
+  ylab(parameterInfo$variableDescription[2]) +
   ggtitle(siteInfo$station_nm)
-nitrateplot
+dischargeplot
 
 # Data pull from NEON
 # NOTES FOR EDITING: either change input to just month or figure out how to loop input
 
-NEON_PARpull <- function(endpoint, productCode, NEONsite, year, month){
-  baseURL <- "http://data.neonscience.org/api/v0" # the base for all calls to the API
-  getURL <- paste(baseURL, endpoint, productCode, sep = "/") #concatenates URL
+NEON_PARpull <- function(endpoint, productCode, NEONsite, year, months){
+  baseURL <- "http://data.neonscience.org/api/v0" # The base URL for all calls to the API
+  getURL <- paste(baseURL, endpoint, productCode, sep = "/") # Concatenates inputs and URL
+  dataPull <- GET(url = getURL) # Communication with NEON API
   
-  dataPull <- GET(url = getURL) # actual data pull from NEON api
+  pull_text <- content(dataPull, as = "text") # Make output JSON readable
+  pull_avail <- fromJSON(pull_text, simplifyDataFrame = TRUE, flatten = TRUE) # Flatten data frame to see available data
+  pull_urls <- unlist(pull_avail$data$siteCodes$availableDataUrls) #Returns list of all available data by URL
   
-  pull_text <- content(dataPull, as = "text") # make output JSON readable
-  pull_avail <- fromJSON(pull_text, simplifyDataFrame = TRUE, flatten = TRUE) # flatten data frame to see available data
-  pull_urls <- unlist(pull_avail$data$siteCodes$availableDataUrls) #returns list of all available data by URL
-  
-  # generate URL snips to be used with grep
+  # Generate URL snips from month input to be used with grep
   URLsnip <- c()
   for (i in 1:length(month)){
-    if (month < 10){
-      monthA <- paste(0, month, sep = "")
+    if (month[i] < 10){
+      monthA <- paste(0, month[i], sep = "")
       yearmonth <- paste(year, monthA, sep = "-")
       URLsnip[i] <- paste(NEONsite, yearmonth, sep = "/")
       i <- i + 1
     }
-    if (month >= 10){
-      yearmonth <- paste(year, month, sep = "-")
+    else {
+      yearmonth <- paste(year, month[i], sep = "-")
       URLsnip[i] <- paste(NEONsite, yearmonth, sep = "/")
     }
   }
+  URLsnip
   
-  # add an apply function in here to grep across months 1:12
-  data_yearmonth1 <- GET(pull_urls[grep(URLsnip[1], pull_urls)]) #get data availability for time frame
-  data_files_yearmonth1 <- fromJSON(content(data_yearmonth1, as = "text"))
+  # Getting data availability across all selected time frames (URL snips)
+  data_yearmonth <- c()
+  data_yearmonth <- lapply(X = URLsnip, FUN = function(x){GET(pull_urls[grep(x, pull_urls)])})
+  data_yearmonth  #works
   
-  # grab available data files for this month with PAR measured at 30 min intervals and the basic file
-  data_yearmonth1_30min <- data_files_yearmonth1$data$files$url[intersect(grep("PARPAR_30min", data_files_yearmonth1$data$files$name), 
-                                                                  grep("basic", data_files_yearmonth1$data$files$name))]
+  data_files_yearmonth <- c()
+  data_files_yearmonth <- lapply(X = data_yearmonth, FUN = function(x){fromJSON(content(x, as = "text"))})
+  data_files_yearmonth[[1]]$data$files$url  #gives urls for first month in list
   
-  data_yearmonth1_30min #all available data that meet this criteria (6 diff files - not sure what the difference is between them!!)
-  data_yearmonth1_30min[1] #for now, just pull the first one in the list
+  # Data files for month, PAR measured at 30 min intervals
+  # Clumsy formatting here, to be fixed ASAP
+  data_yearmonth_30min <- c()
+  length(month)
+  data_yearmonth_30min_1 <- lapply(X = data_files_yearmonth[[1]]$data$files$url, FUN = function(x){x[intersect(grep("PARPAR_30min", x), grep("basic", x))]})
+  data_yearmonth_30min_2 <- lapply(X = data_files_yearmonth[[2]]$data$files$url, FUN = function(x){x[intersect(grep("PARPAR_30min", x), grep("basic", x))]})
+  data_yearmonth_30min_3 <- lapply(X = data_files_yearmonth[[3]]$data$files$url, FUN = function(x){x[intersect(grep("PARPAR_30min", x), grep("basic", x))]})
+  data_yearmonth_30min_4 <- lapply(X = data_files_yearmonth[[4]]$data$files$url, FUN = function(x){x[intersect(grep("PARPAR_30min", x), grep("basic", x))]})
+  data_yearmonth_30min_5 <- lapply(X = data_files_yearmonth[[5]]$data$files$url, FUN = function(x){x[intersect(grep("PARPAR_30min", x), grep("basic", x))]})
   
-  #note: pull from neon is time sensitive, server will be expecting read.delim to be in same time period
-  PAR_2016.01_30min_data <- read.delim(data_yearmonth1_30min[1], sep = ",")
-  return(PAR_2016.01_30min_data)
+  data_yearmonth_30min_1 <- data_yearmonth_30min_1[grep("https", data_yearmonth_30min_1)]
+  data_yearmonth_30min_2 <- data_yearmonth_30min_2[grep("https", data_yearmonth_30min_2)]
+  data_yearmonth_30min_3 <- data_yearmonth_30min_3[grep("https", data_yearmonth_30min_3)]
+  data_yearmonth_30min_4 <- data_yearmonth_30min_4[grep("https", data_yearmonth_30min_4)]
+  data_yearmonth_30min_5 <- data_yearmonth_30min_5[grep("https", data_yearmonth_30min_5)]
+  
+  #note: pull from neon is time sensitive, server will be expecting read.delim to be executed in same time period
+  PAR_outputdata_1 <- read.delim(data_yearmonth_30min_1[[1]], sep = ",")
+  PAR_outputdata_2 <- read.delim(data_yearmonth_30min_2[[1]], sep = ",")
+  PAR_outputdata_3 <- read.delim(data_yearmonth_30min_3[[1]], sep = ",")
+  PAR_outputdata_4 <- read.delim(data_yearmonth_30min_4[[1]], sep = ",")
+  PAR_outputdata_5 <- read.delim(data_yearmonth_30min_5[[1]], sep = ",")
+  
+  PAR_outputdata <- list(PAR_outputdata_1, PAR_outputdata_2, PAR_outputdata_3, PAR_outputdata_4, PAR_outputdata_5)
+  return(PAR_outputdata)
 }
 
-PAR_2016.01_30min <- NEON_PARpull(endpoint = "products", productCode = "DP1.00024.001", 
-                                  NEONsite = "UKFS", year = "2016", month = 1) #jan
-PAR_2016.08_30min <- NEON_PARpull(endpoint = "products", productCode = "DP1.00024.001", 
-                                  NEONsite = "UKFS", year = "2016", month = 8) #aug
+PAR_2016.08_2016.12_30min <- NEON_PARpull(endpoint = "products", productCode = "DP1.00024.001", NEONsite = "UKFS", year = "2016", month = 8:12) #aug thru dec
 
+str(PAR_2016.08_2016.12_30min)
 # "DP1.00024.001" code for PAR
 # "UKFS" KU field station
 
@@ -135,24 +166,7 @@ lubridate::tz(PAR_Aug$DateTime)
 kansas$solarTime <- streamMetabolizer::calc_solar_time(kansas$dateTime, longitude = siteInfo$dec_lon_va)
 PAR_Aug$solarTime <- streamMetabolizer::calc_solar_time(PAR_Aug$DateTime, longitude = siteInfo$dec_lon_va) #approximating longitude of KU field station -- edit
 
-# Convert discharge, gage ht to SI units ----- clean this up
-ft3s_m3s <- function(ft3s){
-  m3s <- ft3s*0.0283168
-  return(m3s)
-}
-kansas$Flow_Inst <- ft3s_m3s(kansas$Flow_Inst)
-parameterInfo$variableName[2] <- "Streamflow, m3/s"
-parameterInfo$variableDescription[2] <- "Discharge, cubic meters per second"
-parameterInfo$unit[2] <- "m3/s"
 
-ft_m <- function(ft){
-  m <- 0.3048*ft
-  return(m)
-}
-kansas$GH_Inst <- ft_m(kansas$GH_Inst)
-parameterInfo$variableName[3] <- "Gage height, m"
-parameterInfo$variableDescription[3] <- "Gage height, meters"
-parameterInfo$unit[3] <- "m"
 
 # compile data frame of merged solar datetime, 
 # PAR, discharge, o2, o2 sat, water temp, gage ht
