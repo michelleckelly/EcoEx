@@ -22,8 +22,8 @@ library(beepr) # Makes a beep when the script is done running :)
 
 # Set up data pull from USGS API
 siteNo <- "06892350" # Kansas R at Desoto, KS
-startDate <- "2016-08-9" # YYYY-MM-DD
-endDate <- "2016-08-11"
+startDate <- "2016-08-13" # YYYY-MM-DD
+endDate <- "2016-08-20"
 pCode <- c("00010","00060","00065","00300","00301") # Parameter codes: water temp, discharge, gage height, DO, DO % saturation
 
 # Justification for using gage height to approximate stream depth https://water.usgs.gov/edu/measureflow.html
@@ -111,7 +111,7 @@ NEON_PARpull <- function(endpoint, productCode, NEONsite, year, month, tz){
 # "UKFS" KU field station
 # month must be numeric for logic argument
 
-PAR_2016.08 <- NEON_PARpull(endpoint = "products", productCode = "DP1.00024.001", NEONsite = "UKFS", year = "2016", month = 8, tz = "America/Chicago")
+PAR <- NEON_PARpull(endpoint = "products", productCode = "DP1.00024.001", NEONsite = "UKFS", year = "2016", month = 8, tz = "America/Chicago")
 
 # Stream Metabolism Calculations
 
@@ -119,15 +119,15 @@ PAR_2016.08 <- NEON_PARpull(endpoint = "products", productCode = "DP1.00024.001"
 metab_inputs("mle", "data")
 
 # Convert both datetimes to solar time
-lubridate::tz(kansas$dateTime) == lubridate::tz(PAR_2016.08$DateTime) # check that both data sets are in same tz
+lubridate::tz(kansas$dateTime) == lubridate::tz(PAR$DateTime) # check that both data sets are in same tz
 
 kansas$solarTime <- streamMetabolizer::calc_solar_time(kansas$dateTime, longitude = siteInfo$dec_lon_va)
-PAR_2016.08$solarTime <- streamMetabolizer::calc_solar_time(PAR_2016.08$DateTime, longitude = siteInfo$dec_lon_va)
+PAR$solarTime <- streamMetabolizer::calc_solar_time(PAR$DateTime, longitude = siteInfo$dec_lon_va)
 
 # Compile data frame of MLE-required data
 
 kansas_streammet_inputs <- data.frame(kansas$solarTime, kansas$DO_Inst, kansas$DO_percentsat, kansas$GH_Inst, kansas$Wtemp_Inst, kansas$Flow_Inst)
-kansas_PAR_inputs <- data.frame(PAR_2016.08$solarTime, PAR_2016.08$PAR)
+kansas_PAR_inputs <- data.frame(PAR$solarTime, PAR$PAR)
 # Rename columns for clarity
 names(kansas_streammet_inputs) <- c("solar.time", "DO.obs", "DO.sat", "depth", "temp.water", "discharge")
 names(kansas_PAR_inputs) <- c("solar.time", "light")
@@ -141,12 +141,27 @@ mle_fit <- metab(mle_specs, data = kansas_met, info = c(site = "Kansas R at Deso
 
 #output of graphs onto pdf
 pdf(file = "Streammet_vis.pdf", width = 9, height = 5, paper = "letter")
-
+Palette <- c("#999999", "#E69F00", "#56B4E9", "#009E73", "#F0E442", "#0072B2", "#D55E00", "#CC79A7")
 # Plot of discharge
-discharge_plot <- ggplot(data = kansas, aes(dateTime, Flow_Inst)) + geom_point()
+discharge_plot <- ggplot(data = kansas, aes(dateTime, Flow_Inst)) + geom_point(colour = Palette[2])
 discharge_plot <- discharge_plot + xlab("") + ylab(parameterInfo$variableDescription[2]) + 
-  ggtitle(siteInfo$station_nm) + theme_classic()
+  ggtitle(siteInfo$station_nm) + guides(colour = "none")
 discharge_plot
+# Plot of DO
+DO_plot <- ggplot(data = kansas, aes(dateTime, DO_Inst)) + geom_point(colour = Palette[3])
+DO_plot <- DO_plot + xlab("") + ylab(parameterInfo$variableDescription[4]) + 
+  ggtitle(siteInfo$station_nm) + guides(colour = "none")
+DO_plot
+# Plot of water temp
+Temp_plot<- ggplot(data = kansas, aes(dateTime, Wtemp_Inst)) + geom_point(colour = Palette[7])
+Temp_plot <- Temp_plot + xlab("") + ylab(parameterInfo$variableDescription[1]) + 
+  ggtitle(siteInfo$station_nm) + guides(colour = "none")
+Temp_plot
+# Plot of PAR
+PAR_plot <- ggplot(data = PAR, aes(DateTime, PAR)) + geom_point(colour = Palette[8])
+PAR_plot <- PAR_plot + xlab("") + ylab("Photosynthetically Active Radiation (PAR)") + 
+  ggtitle(siteInfo$station_nm) + guides(colour = "none")
+PAR_plot
 # Plot of predicted GPP and ER
 GPP_ER_plot <- plot_metab_preds(mle_fit, style = c("ggplot2"))
 GPP_ER_plot
